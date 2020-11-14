@@ -1,0 +1,229 @@
+<!--
+ * @file: description
+ * @author: zhangxing
+ * @Date: 2020-11-14 20:42:52
+ * @LastEditors: zhangxing
+ * @LastEditTime: 2020-11-14 22:49:50
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <style>
+    * {
+      padding: 0;
+      margin: 0;
+    }
+    .container {
+      text-align: center;
+    }
+    .content {
+      position: relative;
+      width: 640px;
+      margin: auto;
+    }
+    #canvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+      /* z-index: 	默认auto。堆叠顺序与父元素相等。 */
+    }
+    input {
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>弹幕</h1>
+    <div class="content">
+      <canvas id="canvas"></canvas>
+      <video id="video" src="./test.mp4" width="640" height="380" controls></video>
+    </div>
+    <input type="text" id="text"> <button id="btn">添加弹幕</button>
+    <input id="color" type="color"> <input type="range" max="40" min="20" id="range">
+  </div>
+  <script>
+    let data = [
+      {
+        value: '啦啦啦啦啦啦',
+        speed: 2,
+        time: 0, // 出现的时间
+        color: 'red',
+        fontSize: 20
+      },
+      {
+        value: '哈哈哈哈哈哈2',
+        time: 0
+      },
+      {
+        value: '哈哈哈哈哈哈2',
+        time: 2
+      },
+      {
+        value: '哈哈哈哈哈哈2',
+        time: 3
+      }
+    ];
+
+    let $ = document.querySelector.bind(document);
+
+    let canvas = $('#canvas');
+    let video = $('#video'); 
+    
+    class Barrage {
+      // CB是大类的实例
+      constructor(obj, CB) {
+        this.value = obj.value;
+        this.time = obj.time;
+        this.obj = obj;
+        this.CB = CB;
+      }
+      init() {
+        this.opacity = this.obj.opacity || this.CB.opacity;
+        this.color = this.obj.color || this.CB.color;
+        this.fontSize = this.obj.fontSize || this.CB.fontSize;
+        this.speed = this.obj.speed || this.CB.speed;
+
+        // 求自己宽度，目的是判断停止绘制的时机
+        let span = document.createElement('span');
+        span.innerText = this.value;
+        span.style.font = this.fontSize + 'px "Microsoft YaHei"';
+        span.style.position = 'absolute';// 添加定位之后span就变为块级元素
+        document.body.appendChild(span);
+        this.width = span.clientWidth;
+        document.body.removeChild(span);
+        // 弹幕出现的位置
+        this.x = this.CB.canvas.clientWidth;
+        this.y = this.CB.canvas.clientHeight * Math.random();
+        // 保证文字能够显示完全
+        if (this.y < this.fontSize) {
+          this.y = this.fontSize;
+        }
+        if (this.y > this.CB.canvas.height - this.fontSize) {
+          this.y = this.CB.canvas.height - this.fontSize;
+        }
+      }
+      render() {
+        this.CB.context.font = this.fontSize + 'px "Microsoft YaHei"';
+        this.CB.context.fillStyle = this.color;
+        this.CB.context.fillText(this.value, this.x, this.y);
+      }
+    }
+
+    class CanvasBarrage {
+      constructor(canvas, video, options={}) {
+        if (!canvas || !video) return;
+
+        this.canvas = canvas;
+        this.video = video;
+
+        let defaultOptions = {
+          fontSize: 20,
+          color: 'gold',
+          speed: 2,
+          opacity: 0.3,
+          data: []
+        }
+        Object.assign(this, defaultOptions, options);
+        this.context = canvas.getContext('2d');
+        this.canvas.width = video.clientWidth;
+        this.canvas.height = video.clientHeight;
+        this.isPaused = true;// 默认暂停播放，表示不再绘制弹幕
+        // 存放所有弹幕的实例
+        this.barrages = this.data.map(obj => new Barrage(obj, this));
+        // 渲染所有弹幕
+        this.render();
+      }
+      renderBarrage() {
+        // 判断弹幕应该出现的时间和视频播放时间是否吻合，吻合就渲染
+        let time = this.video.currentTime;
+        this.barrages.forEach(barrage => {
+          // 已经到了或者过了该条弹幕显示的时机，就绘制这条弹幕
+          if (time >= barrage.time && !barrage.flag) {
+            // 先初始化
+            if (!barrage.isInited) {
+              barrage.init();
+              barrage.isInited = true;
+            }
+            barrage.x -= barrage.speed;
+            barrage.render();// 绘制自己
+            // 已经消失在画布中
+            if (barrage.x < barrage.width * -1) {
+              barrage.flag = true;// 做停止绘制的标记
+            }
+          }
+        })
+      }
+      render () {
+        // 先清空画布,然后再画;如果没有暂停就继续递归画
+        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.renderBarrage();
+
+        if(this.isPaused === false) {
+          requestAnimationFrame(this.render.bind(this));
+        }
+      }
+      add(obj) {
+        this.barrages.push(new Barrage(obj, this));
+      }
+      reset() {
+        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        let time = video.currentTime;
+        this.barrages.forEach(barrage => {
+          barrage.flag = false;
+          // 把将要显示的弹幕准备好: 重新初始化
+          if (time <= barrage.time) {
+            barrage.isInited = false;
+          } else {
+            barrage.flag = true;// 其他已经过了的弹幕就不显示了
+          }
+        });
+      }
+    }
+
+    let canvasBarrage;
+    let socket = new WebSocket('http://localhost:3000');// 连接服务端
+    socket.onopen = function() {
+      socket.onmessage = function(e) {
+        let message = JSON.parse(e.data);
+        if (message.type === 'INIT') {
+          canvasBarrage = new CanvasBarrage(canvas, video, {
+            data: message.data
+          });
+        }
+         else if (message.type === 'ADD') {
+          canvasBarrage.add(message.data);
+        }
+      }
+    }
+
+    video.addEventListener('play', function() {
+      canvasBarrage.isPaused = false;
+      canvasBarrage.render();
+    });
+    video.addEventListener('pause', function() {
+      canvasBarrage.isPaused = true;
+    });
+
+    $('#btn').addEventListener('click', function() {
+      let value = $('#text').value;
+      let time = video.currentTime;
+      let color = $('#color').value;
+      let fontSize = $('#range').value;
+      let obj = {
+        time,value,color,fontSize
+      };
+      socket.send(obj);
+      // canvasBarrage.add(obj);
+    });
+
+    video.addEventListener('seeked', function() {
+      canvasBarrage.reset();
+    });
+
+  </script>
+</body>
+</html>
